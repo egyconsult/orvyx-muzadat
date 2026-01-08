@@ -1,0 +1,17 @@
+cd C:\orvyx
+code .
+
+npm run dev
+
+http://localhost:3000/app
+http://localhost:3000/access/approved
+http://localhost:3000/access/declined
+http://localhost:3000/access/pending
+http://localhost:3000/
+http://localhost:3000/app/lots
+http://localhost:3000/app/lots/lot-001
+
+تثبيت
+npm install @supabase/supabase-js
+
+
