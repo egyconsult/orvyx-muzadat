@@ -15,3 +15,5 @@ http://localhost:3000/app/lots/lot-001
 npm install @supabase/supabase-js
 
 
+git add .
+عند عمل تعديل ويسمع فى الفيرسيل والمواقع والداتابيز

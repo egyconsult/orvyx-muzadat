@@ -9,7 +9,7 @@ export default function Home() {
       <div className="max-w-2xl mx-auto space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-4xl font-bold tracking-tight">
-            Dar Al-Muzadat 🚀
+            Dar Al-Muzadat INTERNATIONAL 🚀
           </h1>
           <ModeToggle />
         </div>
