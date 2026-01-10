@@ -1,3 +1,14 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+  .luxury-card {
+    background: linear-gradient(145deg, rgba(15,23,42,0.95), rgba(30,41,59,0.95)) !important;
+    backdrop-filter: blur(20px) !important;
+    border: 1px solid rgba(6,78,59,0.3) !important;
+  }
+  .dark-bg {
+    background: linear-gradient(145deg, #0f172a 0%, #111827 50%, #000 100%) !important;
+  }
+}
