@@ -17,3 +17,6 @@ npm install @supabase/supabase-js
 
 git add .
 عند عمل تعديل ويسمع فى الفيرسيل والمواقع والداتابيز
+git add .
+git commit -m "Update dashboard UI - Vercel test"
+git push origin main
