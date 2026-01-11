@@ -1,8 +1,8 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  /* config options here */
-  reactCompiler: true,
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // Vercel-safe: no experimental، webpack stable
+  swcMinify: true,
+  transpilePackages: ['@supabase/supabase-js'],
 };
 
-export default nextConfig;
+module.exports = nextConfig;
