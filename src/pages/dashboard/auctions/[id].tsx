@@ -83,28 +83,27 @@ export default function AuctionDetail() {
   
   setBidding(true);
   
-  const { data: { session } } = await supabase.auth.getSession();
+  console.log('🔥 Bid debug:', { auction_id: id, typeof_id: typeof id, amount });
   
   const { data, error } = await supabase
     .from('bids')
     .insert({ 
-      auction_id: id, 
-      amount, 
-      user_id: session?.user?.id || '00000000-0000-0000-0000-000000000000'
+      auction_id: id.toString(),  // force string
+      amount: Number(amount),
+      user_id: '550e8400-e29b-41d4-a716-446655440001'  // UUID test جديد صالح
     })
     .select()
     .single();
     
   setBidding(false);
-  
-  console.log('🆕 Bid result:', { data, error });
+  console.log('🆕 Bid FULL:', { data, error });
   
   if (!error && data) {
+    alert('✅ نجحت! ' + amount.toLocaleString());
     setNewBidAmount('');
-    // Realtime update current_bid
-    window.location.reload();  // بسيط للاختبار، بعدين useEffect
+    window.location.reload();
   } else {
-    alert('خطأ في المزايدة: ' + (error?.message || 'غير معروف'));
+    alert('❌ ' + error.message);
   }
 };
 
