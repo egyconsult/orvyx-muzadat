@@ -1,8 +1,7 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  // Vercel-safe: no experimental، webpack stable
-  swcMinify: true,
-  transpilePackages: ['@supabase/supabase-js'],
-};
+import type { NextConfig } from 'next'
 
-module.exports = nextConfig;
+const nextConfig: NextConfig = {
+  transpilePackages: ['@supabase/supabase-js'],
+}
+
+export default nextConfig

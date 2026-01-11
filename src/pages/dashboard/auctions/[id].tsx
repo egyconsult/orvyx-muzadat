@@ -1,164 +1,257 @@
-"use client";
-import { useRouter } from 'next/router';
+'use client';
+
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import { supabase } from '@/lib/supabaseClient';
+import Image from 'next/image';
+import Link from 'next/link';
+
+interface Bid {
+  id: string;
+  auction_id: string;
+  amount: number;
+  user_id: string;
+  created_at: string;
+}
+
+interface Auction {
+  id: string;
+  title: string;
+  description: string;
+  image_url: string;
+  current_bid: number;
+  start_price: number;
+  end_time: string;
+  status: 'live' | 'upcoming' | 'ended';
+  bids_count: number;
+  bids?: Bid[];  // Nested bids from Supabase
+}
 
 export default function AuctionDetail() {
   const router = useRouter();
   const { id } = router.query as { id: string };
-  const [auction, setAuction] = useState<any>(null);
+  const [auction, setAuction] = useState<Auction | null>(null);
+  const [bids, setBids] = useState<Bid[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [currentBid, setCurrentBid] = useState(0);
-  const [timeLeft, setTimeLeft] = useState('02:47:12');
   const [bidding, setBidding] = useState(false);
   const [newBidAmount, setNewBidAmount] = useState('');
+  const [countdown, setCountdown] = useState('');
 
-  // Fetch auction
   useEffect(() => {
-    if (!router.isReady || !id) return;
-    console.log('🆔 Auction ID:', id);
+    if (!id) return;
+
     async function fetchAuction() {
-      setLoading(true);
-      const { data, error: err } = await supabase
+      const { data, error } = await supabase
         .from('properties')
-        .select('*')
+        .select(`
+          *,
+          bids (
+            id,
+            amount,
+            created_at,
+            user_id
+          )
+        `)
         .eq('id', id)
         .single();
-      console.log('📦 Auction data:', data);
-      console.log('❌ Supabase error:', err);
-      if (err || !data) {
-        setError(`مزاد غير موجود: ${id}`);
-      } else {
-        setAuction(data);
-        setCurrentBid(data.current_bid || 0);
+
+      if (error) {
+        console.error('❌ Auction fetch error:', error);
+        setLoading(false);
+        return;
       }
+
+      // 🔥 TypeScript fix: explicit nested type
+      const auctionData = data as Auction & { bids: Bid[] };
+      console.log('🆔 Auction loaded:', auctionData);
+      setAuction(auctionData);
+      setBids(auctionData.bids || []);
       setLoading(false);
     }
-    fetchAuction();
-  }, [router.isReady, id]);
 
-  // Realtime + timer
-  useEffect(() => {
-    if (!auction?.id) return;
+    fetchAuction();
+
+    // Realtime subscription
     const channel = supabase
-      .channel(`auction-${id}`)
-      .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'bids', filter: `auction_id=eq.${id}` },
+      .channel('auction-bids')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bids',
+          filter: `auction_id=eq.${id}`,
+        },
         (payload) => {
-          console.log('🆕 New bid:', payload.new.amount);
-          setCurrentBid(payload.new.amount);
+          console.log('🔥 Realtime bid:', payload);
+          if (payload.eventType === 'INSERT') {
+            const newBid = payload.new as Bid;
+            setBids((prev) => [...prev, newBid]);
+            setAuction((prev) => prev ? { ...prev, current_bid: newBid.amount, bids_count: prev.bids_count + 1 } : prev);
+          }
         }
       )
       .subscribe();
 
-    const interval = setInterval(() => {
-      if (auction.end_time) {  // استخدم end_time زي الـ logs
-        const now = new Date();
-        const end = new Date(auction.end_time);
-        const diff = end.getTime() - now.getTime();
-        if (diff > 0) {
-          const h = Math.floor(diff / 3600000);
-          const m = Math.floor((diff % 3600000) / 60000);
-          const s = Math.floor((diff % 60000) / 1000);
-          setTimeLeft(`${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`);
-        } else {
-          setTimeLeft('انتهى!');
-        }
-      }
-    }, 1000);
-
     return () => {
       supabase.removeChannel(channel);
-      clearInterval(interval);
     };
-  }, [auction, id]);
+  }, [id]);
 
-  const handleBid = async () => {
-  const amount = parseInt(newBidAmount);
-  if (amount <= currentBid + 1000) {
-    alert(`الحد الأدنى: $${(currentBid + 1000).toLocaleString()}`);
+  useEffect(() => {
+    if (!auction) return;
+
+    const interval = setInterval(() => {
+      const now = new Date().toISOString();
+      if (new Date(auction.end_time) <= new Date(now)) {
+        setCountdown('انتهى المزاد');
+        clearInterval(interval);
+      } else {
+        const diff = new Date(auction.end_time).getTime() - new Date(now).getTime();
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        setCountdown(`${days}أيام ${hours}س ${minutes}د`);
+      }
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [auction]);
+
+const handleBid = async () => {
+  if (!newBidAmount || parseFloat(newBidAmount) <= (auction?.current_bid || 0)) {
+    alert('المبلغ يجب أن يكون أعلى من العرض الحالي');
     return;
   }
-  
+
   setBidding(true);
-  
-  console.log('🔥 Bid debug:', { auction_id: id, typeof_id: typeof id, amount });
-  
+  console.log('🔥 Button clicked! Bid:', newBidAmount);
+
+  const amount = parseFloat(newBidAmount);
+  // 🔥 Fix: type-safe user_id
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId = user?.id || 'anonymous';
+
   const { data, error } = await supabase
     .from('bids')
-    .insert({ 
-      auction_id: id.toString(),  // force string
-      amount: Number(amount),
-      user_id: '550e8400-e29b-41d4-a716-446655440001'  // UUID test جديد صالح
+    .insert({
+      auction_id: id,
+      amount,
+      user_id: userId,  // ← no error
     })
     .select()
     .single();
-    
-  setBidding(false);
-  console.log('🆕 Bid FULL:', { data, error });
-  
-  if (!error && data) {
-    alert('✅ نجحت! ' + amount.toLocaleString());
-    setNewBidAmount('');
-    window.location.reload();
-  } else {
-    alert('❌ ' + error.message);
-  }
-};
 
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-2xl text-emerald-400">⏳ جاري التحميل...</div>;
-  if (error) return (
-    <div className="min-h-screen bg-gradient-to-br from-black to-neutral-900 text-white p-8 flex items-center justify-center">
-      <div className="max-w-md w-full bg-black/50 backdrop-blur-xl rounded-3xl p-12 text-center border border-neutral-800">
-        <h1 className="text-4xl font-bold mb-4 text-red-400">{error}</h1>
-        <a href="/dashboard/auctions" className="inline-block bg-emerald-600 hover:bg-emerald-700 text-xl px-12 py-4 rounded-2xl font-bold transition-all">
-          ← العودة للمزادات
-        </a>
-      </div>
+    console.log('🆕 Bid FULL:', { data, error });
+    setBidding(false);
+    setNewBidAmount('');
+
+    if (error) {
+      alert('❌ ' + error.message);
+    } else {
+      alert('✅ نجحت المزايدة!');
+    }
+  };
+
+  if (loading) return <div className="flex justify-center items-center h-screen text-xl text-white bg-gray-900">جاري التحميل...</div>;
+  if (!auction) return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white flex flex-col items-center justify-center p-8">
+      <h1 className="text-4xl font-bold mb-4">مزاد غير موجود</h1>
+      <Link href="/dashboard" className="bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 px-8 py-4 rounded-3xl font-bold">
+        عودة للداشبورد
+      </Link>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-neutral-950 to-emerald-900 text-white py-12 px-4 md:px-8">
-      {/* باقي الـ JSX زي الكود الأصلي، بس غير: */}
-      <a href="/dashboard/auctions" className="inline-flex items-center gap-2 mb-8 text-emerald-400 hover:text-emerald-300 text-xl font-bold transition-all">← العودة</a>
-      
-      {/* Stats: استخدم currentBid من state */}
-      <div className="grid grid-cols-2 gap-4 text-center p-6 bg-black/30 backdrop-blur-xl rounded-2xl border border-neutral-800">
-        <div><div className="text-2xl font-bold text-emerald-400">${currentBid.toLocaleString()}</div><div className="text-sm text-neutral-400">عرض حالي</div></div>
-        <div><div className="text-2xl font-bold">{auction.area || '500'} م²</div><div className="text-sm text-neutral-400">المساحة</div></div>
+    <div dir="rtl" className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-hidden">
+      {/* Hero Section */}
+      <div className="relative h-[70vh] md:h-[80vh] overflow-hidden">
+        <Image
+          src={auction.image_url || '/placeholder-villa.jpg'}
+          alt={auction.title}
+          fill
+          className="object-cover brightness-50"
+          priority
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+        <div className="absolute bottom-8 right-8 left-8 md:right-16 md:left-16">
+          <Link href="/dashboard" className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 px-6 py-3 rounded-3xl hover:bg-white/20 transition-all duration-300 mb-4">
+            <svg className="w-5 h-5 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            عودة للداشبورد
+          </Link>
+          <h1 className="text-4xl md:text-6xl font-bold mb-4 drop-shadow-2xl">{auction.title}</h1>
+          <p className="text-xl md:text-2xl opacity-90 max-w-2xl leading-relaxed">{auction.description}</p>
+        </div>
       </div>
 
-      {/* Bid form */}
-      <input 
-        type="number" 
-        value={newBidAmount}
-        onChange={(e) => setNewBidAmount(e.target.value)}
-        placeholder="اكتب المبلغ..."
-        className="w-full bg-black/50 border border-neutral-600 rounded-2xl px-6 py-5 text-2xl text-right text-white placeholder-neutral-500 focus:border-emerald-400 focus:outline-none transition-all"
-        min={currentBid + 1000}
-      />
-      <p className="text-sm text-emerald-400 mt-1 text-right">الحد الأدنى: ${(currentBid + 1000).toLocaleString()}</p>
-      <button 
-        onClick={handleBid} 
-        disabled={bidding}
-        className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 text-2xl py-6 px-8 rounded-3xl font-bold shadow-2xl hover:shadow-emerald-500/50 transition-all duration-300 hover:-translate-y-1"
-      >
-        {bidding ? '⏳ جاري...' : '➤ تأكيد المزايدة'}
-      </button>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+          {/* Details */}
+          <div className="space-y-8">
+            <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-8">
+              <h2 className="text-3xl font-bold mb-6 flex items-center gap-3">
+                <div className="w-3 h-3 bg-emerald-400 rounded-full animate-pulse" />
+                تفاصيل المزاد
+              </h2>
+              <div className="space-y-4 text-xl">
+                <p><span className="font-bold text-emerald-400">السعر الحالي:</span> {auction.current_bid.toLocaleString()} جنيه</p>
+                <p><span className="font-bold text-emerald-400">المزايدات:</span> {auction.bids_count}</p>
+                <p><span className="font-bold text-emerald-400">نهاية المزاد:</span> {countdown}</p>
+              </div>
+            </div>
 
-      {/* Timer */}
-      <div className="text-center p-6 bg-black/40 rounded-2xl">
-        <div className="text-3xl font-mono font-bold text-emerald-400 mb-1">{timeLeft}</div>
-        <div className="text-lg text-neutral-400">المتبقي</div>
-      </div>
+            {bids.length > 0 && (
+              <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-8">
+                <h3 className="text-2xl font-bold mb-6">آخر المزايدات</h3>
+                <div className="space-y-3 max-h-80 overflow-y-auto">
+                  {bids.slice(-5).reverse().map((bid) => (
+                    <div key={bid.id} className="flex justify-between items-center p-4 bg-white/10 rounded-2xl">
+                      <span>{bid.amount.toLocaleString()} جنيه</span>
+                      <span className="text-sm opacity-75">{new Date(bid.created_at).toLocaleTimeString('ar-EG')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
 
-      {/* باقي الـ hero image + details زي الأصلي مع auction.title, auction.description */}
-      <h1 className="text-4xl md:text-5xl font-black mb-8 text-emerald-300 drop-shadow-lg">{auction.title}</h1>
-      <div className="max-w-4xl mx-auto mt-20 p-10 bg-black/30 backdrop-blur-xl rounded-3xl border border-neutral-800">
-        <h2 className="text-3xl font-bold mb-8 text-emerald-400">📄 التفاصيل</h2>
-        <p className="text-xl leading-relaxed text-neutral-200">{auction.description || 'عقار فاخر جاهز للاستثمار.'}</p>
+          {/* Bid Form */}
+          <div className="bg-gradient-to-b from-emerald-900/20 to-emerald-900/10 backdrop-blur-md border border-emerald-500/30 rounded-3xl p-8 lg:p-12 shadow-2xl">
+            <h2 className="text-3xl font-bold mb-8 text-center text-emerald-400 drop-shadow-lg">انضم للمزايدة الحية</h2>
+            <div className="space-y-6">
+              <div className="text-center p-6 bg-white/10 rounded-2xl">
+                <div className="text-4xl font-bold text-emerald-400 mb-2">{auction.current_bid.toLocaleString()}</div>
+                <p className="text-xl opacity-90">العرض الحالي (جنيه)</p>
+              </div>
+
+              <div className="relative">
+                <input
+                  type="number"
+                  value={newBidAmount}
+                  onChange={(e) => setNewBidAmount(e.target.value)}
+                  placeholder="أدخل عرضك الجديد"
+                  className="w-full text-2xl text-right py-6 px-8 bg-white/10 border-2 border-white/20 rounded-3xl focus:border-emerald-400 focus:outline-none transition-all duration-300 text-white placeholder-gray-300"
+                  min={auction.current_bid + 1000}
+                />
+                <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                  <span className="text-emerald-400 font-bold">جنيه</span>
+                </div>
+              </div>
+
+              <button
+                onClick={handleBid}
+                disabled={bidding || !newBidAmount}
+                className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600 disabled:from-gray-600 disabled:to-gray-500 disabled:cursor-not-allowed text-white text-xl md:text-2xl py-6 px-8 rounded-3xl font-bold shadow-2xl hover:shadow-emerald-500/50 transition-all duration-300 hover:-translate-y-1 active:translate-y-0"
+              >
+                {bidding ? '⏳ جاري الإرسال...' : '➤ تأكيد المزايدة'}
+              </button>
+            </div>
+            <p className="text-center text-sm text-gray-400 mt-6">الحد الأدنى: {auction.current_bid + 1000} جنيه</p>
+          </div>
+        </div>
       </div>
     </div>
   );
