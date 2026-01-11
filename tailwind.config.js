@@ -1,19 +1,10 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./src/**/*.{js,ts,jsx,tsx}",  // ✅ Covers ALL src files
   ],
   theme: {
-    extend: {
-      colors: {
-        black: {  // ✅ Add black gradients
-          90: 'rgba(0,0,0,0.9)',
-          95: 'rgba(0,0,0,0.95)',
-        }
-      }
-    },
+    extend: {},
   },
   plugins: [],
 }
