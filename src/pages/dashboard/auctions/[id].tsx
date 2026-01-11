@@ -75,20 +75,38 @@ export default function AuctionDetail() {
   }, [auction, id]);
 
   const handleBid = async () => {
-    const amount = parseInt(newBidAmount);
-    if (amount <= currentBid + 1000) {
-      alert(`الحد الأدنى: $${(currentBid + 1000).toLocaleString()}`);
-      return;
-    }
-    setBidding(true);
-    const { error } = await supabase
-      .from('bids')
-      .insert({ auction_id: id, amount, user_id: '00000000-0000-0000-0000-000000000000' })
-      .select()
-      .single();
-    setBidding(false);
-    if (!error) setNewBidAmount('');
-  };
+  const amount = parseInt(newBidAmount);
+  if (amount <= currentBid + 1000) {
+    alert(`الحد الأدنى: $${(currentBid + 1000).toLocaleString()}`);
+    return;
+  }
+  
+  setBidding(true);
+  
+  const { data: { session } } = await supabase.auth.getSession();
+  
+  const { data, error } = await supabase
+    .from('bids')
+    .insert({ 
+      auction_id: id, 
+      amount, 
+      user_id: session?.user?.id || '00000000-0000-0000-0000-000000000000'
+    })
+    .select()
+    .single();
+    
+  setBidding(false);
+  
+  console.log('🆕 Bid result:', { data, error });
+  
+  if (!error && data) {
+    setNewBidAmount('');
+    // Realtime update current_bid
+    window.location.reload();  // بسيط للاختبار، بعدين useEffect
+  } else {
+    alert('خطأ في المزايدة: ' + (error?.message || 'غير معروف'));
+  }
+};
 
   if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-2xl text-emerald-400">⏳ جاري التحميل...</div>;
   if (error) return (
